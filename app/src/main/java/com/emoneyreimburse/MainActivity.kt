@@ -21,6 +21,7 @@ import androidx.lifecycle.lifecycleScope
 import com.emoneyreimburse.nfc.CardReadResult
 import com.emoneyreimburse.nfc.NfcCardReader
 import com.emoneyreimburse.ui.*
+import com.emoneyreimburse.ui.theme.EmoneyReimburseTheme
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
@@ -39,7 +40,7 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         nfcAdapter = NfcAdapter.getDefaultAdapter(this)
         
         setContent {
-            MaterialTheme {
+            EmoneyReimburseTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
