@@ -24,6 +24,7 @@ fun ScanScreen(
     errorMessage: String?,
     onNfcPrompt: () -> Unit,
     onDemoClick: () -> Unit,
+    onManualClick: () -> Unit,
     onClearError: () -> Unit
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
@@ -128,6 +129,22 @@ fun ScanScreen(
             }
             
             Spacer(modifier = Modifier.height(16.dp))
+            
+            OutlinedButton(
+                onClick = onManualClick,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    text = "Input Transaksi Manual",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
             
             OutlinedButton(
                 onClick = onDemoClick,

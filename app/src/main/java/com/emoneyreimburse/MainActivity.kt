@@ -57,7 +57,17 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
                                 errorMessage = uiState.errorMessage,
                                 onNfcPrompt = { checkNfcAndPrompt() },
                                 onDemoClick = { viewModel.loadDemoData() },
+                                onManualClick = { viewModel.onManualInput() },
                                 onClearError = { viewModel.clearError() }
+                            )
+                        }
+                        Screen.MANUAL -> {
+                            ManualInputScreen(
+                                manualTransactions = uiState.transactions,
+                                onAddTransaction = { viewModel.addManualTransaction(it) },
+                                onDeleteTransaction = { viewModel.deleteManualTransaction(it) },
+                                onNext = { viewModel.onManualNextToSelect() },
+                                onBack = { viewModel.onBackToScan() }
                             )
                         }
                         Screen.SELECT -> {

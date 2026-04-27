@@ -86,6 +86,43 @@ class MainViewModel : ViewModel() {
         }
     }
     
+    fun onManualInput() {
+        _uiState.update { currentState ->
+            currentState.copy(
+                currentScreen = Screen.MANUAL,
+                cardInfo = CardInfo(
+                    cardType = CardType.UNKNOWN,
+                    cardNumber = "Manual Input",
+                    balance = 0,
+                    cardName = "Input Manual"
+                ),
+                errorMessage = null
+            )
+        }
+    }
+    
+    fun addManualTransaction(transaction: Transaction) {
+        _uiState.update { currentState ->
+            currentState.copy(
+                transactions = currentState.transactions + transaction
+            )
+        }
+    }
+    
+    fun deleteManualTransaction(transactionId: String) {
+        _uiState.update { currentState ->
+            currentState.copy(
+                transactions = currentState.transactions.filter { it.id != transactionId }
+            )
+        }
+    }
+    
+    fun onManualNextToSelect() {
+        _uiState.update { currentState ->
+            currentState.copy(currentScreen = Screen.SELECT)
+        }
+    }
+    
     fun onBackToSelect() {
         _uiState.update { currentState ->
             currentState.copy(currentScreen = Screen.SELECT)
@@ -216,5 +253,5 @@ data class UiState(
 )
 
 enum class Screen {
-    SCAN, SELECT, INPUT, PREVIEW
+    SCAN, MANUAL, SELECT, INPUT, PREVIEW
 }
