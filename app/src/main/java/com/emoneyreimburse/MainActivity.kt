@@ -38,6 +38,7 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         super.onCreate(savedInstanceState)
         
         nfcAdapter = NfcAdapter.getDefaultAdapter(this)
+        Log.d(TAG, "NFC Adapter: $nfcAdapter")
         
         setContent {
             EmoneyReimburseTheme {
@@ -95,30 +96,45 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     
     override fun onResume() {
         super.onResume()
-        // Enable reader mode for better NFC handling
-        nfcAdapter?.enableReaderMode(
-            this,
-            this,
-            NfcAdapter.FLAG_READER_NFC_A or
-            NfcAdapter.FLAG_READER_NFC_B or
-            NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK,
-            null
-        )
+        Log.d(TAG, "Enabling NFC reader mode")
+        try {
+            nfcAdapter?.enableReaderMode(
+                this,
+                this,
+                NfcAdapter.FLAG_READER_NFC_A or
+                NfcAdapter.FLAG_READER_NFC_B or
+                NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK,
+                null
+            )
+            Log.d(TAG, "NFC reader mode enabled")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to enable reader mode", e)
+        }
     }
     
     override fun onPause() {
         super.onPause()
-        nfcAdapter?.disableReaderMode(this)
+        try {
+            nfcAdapter?.disableReaderMode(this)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to disable reader mode", e)
+        }
     }
     
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
+        Log.d(TAG, "onNewIntent: ${intent?.action}")
         handleNfcIntent(intent)
     }
     
     override fun onTagDiscovered(tag: Tag?) {
+        Log.d(TAG, "onTagDiscovered called!")
         tag?.let {
+            Log.d(TAG, "Tag discovered: ${it.id.toHex()}")
+            Log.d(TAG, "Tag techs: ${it.techList.joinToString()}")
+            
             runOnUiThread {
+                Toast.makeText(this, "Kartu terdeteksi! Membaca...", Toast.LENGTH_SHORT).show()
                 readNfcCard(it)
             }
         }
@@ -129,25 +145,39 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             intent?.action == NfcAdapter.ACTION_NDEF_DISCOVERED ||
             intent?.action == NfcAdapter.ACTION_TAG_DISCOVERED) {
             
+            Log.d(TAG, "NFC Intent received: ${intent.action}")
             val tag: Tag? = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG)
             tag?.let {
+                Log.d(TAG, "Tag from intent: ${it.id.toHex()}")
                 readNfcCard(it)
             }
         }
     }
     
     private fun readNfcCard(tag: Tag) {
+        Log.d(TAG, "readNfcCard called")
         viewModel.setLoading(true)
         
         lifecycleScope.launch {
-            val result = nfcCardReader.readCard(tag)
-            when (result) {
-                is CardReadResult.Success -> {
-                    viewModel.onCardScanned(result.cardInfo, result.transactions)
+            try {
+                val result = nfcCardReader.readCard(tag)
+                when (result) {
+                    is CardReadResult.Success -> {
+                        Log.d(TAG, "Card read success: ${result.transactions.size} transactions")
+                        if (result.transactions.isEmpty()) {
+                            viewModel.onScanError("Kartu terbaca tapi tidak ada transaksi ditemukan. Coba kartu lain.")
+                        } else {
+                            viewModel.onCardScanned(result.cardInfo, result.transactions)
+                        }
+                    }
+                    is CardReadResult.Error -> {
+                        Log.e(TAG, "Card read error: ${result.message}")
+                        viewModel.onScanError(result.message)
+                    }
                 }
-                is CardReadResult.Error -> {
-                    viewModel.onScanError(result.message)
-                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Unexpected error", e)
+                viewModel.onScanError("Error tidak terduga: ${e.message}")
             }
         }
     }
@@ -166,4 +196,8 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             }
         }
     }
+}
+
+private fun ByteArray.toHex(): String {
+    return joinToString("") { "%02X".format(it) }
 }

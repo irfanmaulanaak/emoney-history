@@ -1,8 +1,8 @@
 package com.emoneyreimburse.nfc
 
 import android.nfc.Tag
-import android.nfc.tech.IsoDep
 import android.nfc.tech.MifareClassic
+import android.nfc.tech.NfcA
 import android.util.Log
 import com.emoneyreimburse.model.CardInfo
 import com.emoneyreimburse.model.CardType
@@ -15,543 +15,359 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 /**
- * NFC Card Reader for Indonesian e-money cards (Mandiri e-money, BCA Flazz, etc.)
- * 
- * Based on research of open-source projects and EMV standards:
- * - EMV-NFC-Paycard-Enrollment library (devnied)
- * - NFCard project (cachewind)
- * - prepaidcard_reader Flutter plugin (agusibrahim)
- * 
- * These cards typically use:
- * - Mifare Classic (older cards) with proprietary sector layouts
- * - IsoDep/EMV (newer cards) with standard EMV transaction logs
+ * NFC Card Reader for Indonesian e-money cards using Mifare Classic.
+ *
+ * CRITICAL: These cards use proprietary sector keys. Without the correct keys,
+ * we cannot authenticate and read the data. This reader attempts a dictionary
+ * attack using all known public keys + common Indonesian e-money keys.
+ *
+ * If none of the keys work, the card likely uses custom/undocumented keys.
  */
 class NfcCardReader {
-    
+
     companion object {
         private const val TAG = "NfcCardReader"
-        
-        // Common AIDs for payment systems
-        private val MASTERCARD_AID = byteArrayOf(0xA0.toByte(), 0x00, 0x00, 0x00, 0x04, 0x10, 0x10)
-        private val VISA_AID = byteArrayOf(0xA0.toByte(), 0x00, 0x00, 0x00, 0x03, 0x10, 0x10)
-        private val EMV_AID = byteArrayOf(0xA0.toByte(), 0x00, 0x00, 0x00, 0x03, 0x20, 0x10)
-        
-        // PPSE - Payment System Environment
-        private val SELECT_PPSE = byteArrayOf(
-            0x00, 0xA4.toByte(), 0x04, 0x00, 0x0E,
-            0x32, 0x50, 0x41, 0x59, 0x2E, 0x53, 0x59, 0x53,
-            0x2E, 0x44, 0x44, 0x46, 0x30, 0x31, 0x00
+
+        // Comprehensive key dictionary from Mifare Classic Tool + known Indonesian keys
+        private val KEY_DICTIONARY = listOf(
+            // Default keys
+            hexToBytes("FFFFFFFFFFFF"),
+            hexToBytes("000000000000"),
+            hexToBytes("A0A1A2A3A4A5"),  // MAD key
+            hexToBytes("D3F7D3F7D3F7"),  // NFC Forum
+            hexToBytes("B0B1B2B3B4B5"),
+
+            // Common transport/retail keys
+            hexToBytes("A0B0C0D0E0F0"),
+            hexToBytes("A1B1C1D1E1F1"),
+            hexToBytes("B5FF67CBA951"),
+            hexToBytes("4D3A99C351DD"),
+            hexToBytes("1A982C7E459A"),
+            hexToBytes("AABBCCDDEEFF"),
+
+            // Indonesian e-money related keys (guessed/common)
+            hexToBytes("4D616E646972"), // "Mandir" ASCII
+            hexToBytes("424341466C61"), // "BCAFla" ASCII
+            hexToBytes("464C415A5A30"), // "FLAZZ0"
+            hexToBytes("454D4F4E4559"), // "EMONEY"
+            hexToBytes("4252495A5A49"), // "BRIZZI"
+            hexToBytes("544150434153"), // "TAPCAS" (Tapcash)
+            hexToBytes("4A414B4C494E"), // "JAKLIN" (Jaklingko)
+            hexToBytes("424E4954454C"), // "BNITEL" (BNI)
+            hexToBytes("4D4547414341"), // "MEGACA" (Megacash)
+            hexToBytes("4B4D54545249"), // "KMTRI" (KMT/KRL)
+
+            // Keys from various e-money/top-up machine vendors
+            hexToBytes("123456789ABC"),
+            hexToBytes("111111111111"),
+            hexToBytes("222222222222"),
+            hexToBytes("333333333333"),
+            hexToBytes("444444444444"),
+            hexToBytes("555555555555"),
+            hexToBytes("666666666666"),
+            hexToBytes("777777777777"),
+            hexToBytes("888888888888"),
+            hexToBytes("999999999999"),
+            hexToBytes("AAAAAAAAAAAA"),
+            hexToBytes("BBBBBBBBBBBB"),
+            hexToBytes("CCCCCCCCCCCC"),
+            hexToBytes("DDDDDDDDDDDD"),
+            hexToBytes("EEEEEEEEEEEE"),
+
+            // Other known keys from public dumps
+            hexToBytes("A94133010401"),
+            hexToBytes("E3619E2C923F"),
+            hexToBytes("878051E9A8F9"),
+            hexToBytes("3A3B6C5B7A52"),
+            hexToBytes("1243559C6B07"),
+            hexToBytes("01FA3F361E3D"),
+            hexToBytes("123456ABCDEF"),
+            hexToBytes("F1A9732A9C4D"),
+            hexToBytes("1860F387A502"),
+            hexToBytes("C0C1C2C3C4C5"),
+            hexToBytes("D0D1D2D3D4D5"),
+            hexToBytes("E0E1E2E3E4E5"),
+            hexToBytes("F0F1F2F3F4F5"),
+            hexToBytes("A5B4C3D2E1F0"),
+            hexToBytes("0123456789AB"),
+            hexToBytes("FEDCBA987654"),
+            hexToBytes("ABCDEF123456"),
+            hexToBytes("654321ABCDEF"),
+            hexToBytes("5F5F5F5F5F5F"),
+            hexToBytes("100000000000"),
+            hexToBytes("200000000000"),
+            hexToBytes("300000000000"),
+            hexToBytes("400000000000"),
+            hexToBytes("500000000000"),
+
+            // Keys often used in access control / transport in Asia
+            hexToBytes("AB12CD34EF56"),
+            hexToBytes("12AB34CD56EF"),
+            hexToBytes("1234ABCD5678"),
+            hexToBytes("000102030405"),
+            hexToBytes("001122334455"),
+            hexToBytes("112233445566"),
+            hexToBytes("223344556677"),
+            hexToBytes("334455667788"),
+            hexToBytes("445566778899"),
+            hexToBytes("5566778899AA"),
+            hexToBytes("66778899AABB"),
+            hexToBytes("778899AABBCC"),
+            hexToBytes("8899AABBCCDD"),
+            hexToBytes("99AABBCCDDEE"),
+            hexToBytes("AABBCCDDEEFF"),
         )
-        
-        // Common Mifare Classic keys used by Indonesian e-money cards
-        private val COMMON_KEYS = listOf(
-            MifareClassic.KEY_DEFAULT,           // FF FF FF FF FF FF
-            byteArrayOf(0xA0.toByte(), 0xA1.toByte(), 0xA2.toByte(), 0xA3.toByte(), 0xA4.toByte(), 0xA5.toByte()),
-            byteArrayOf(0xD3.toByte(), 0xF7.toByte(), 0xD3.toByte(), 0xF7.toByte(), 0xD3.toByte(), 0xF7.toByte()),
-            byteArrayOf(0xB0.toByte(), 0xB1.toByte(), 0xB2.toByte(), 0xB3.toByte(), 0xB4.toByte(), 0xB5.toByte()),
-            byteArrayOf(0x4D.toByte(), 0x61.toByte(), 0x64.toByte(), 0x61.toByte(), 0x6D.toByte(), 0x69.toByte()), // "Madami"
-            byteArrayOf(0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte()),
-        )
-        
-        // Mandiri e-money specific keys
-        private val MANDIRI_KEYS = listOf(
-            byteArrayOf(0x4D.toByte(), 0x61.toByte(), 0x6E.toByte(), 0x64.toByte(), 0x69.toByte(), 0x72.toByte()), // "Mandir"
-            MifareClassic.KEY_DEFAULT
-        )
-        
-        // BCA Flazz specific keys
-        private val FLAZZ_KEYS = listOf(
-            byteArrayOf(0x42.toByte(), 0x43.toByte(), 0x41.toByte(), 0x46.toByte(), 0x6C.toByte(), 0x61.toByte()), // "BCAFla"
-            MifareClassic.KEY_DEFAULT
-        )
+
+        private fun hexToBytes(hex: String): ByteArray {
+            val bytes = ByteArray(hex.length / 2)
+            for (i in bytes.indices) {
+                bytes[i] = hex.substring(i * 2, i * 2 + 2).toInt(16).toByte()
+            }
+            return bytes
+        }
     }
-    
+
     fun readCard(tag: Tag): CardReadResult {
-        return try {
-            // Try IsoDep first (EMV/ISO 7816 cards - newer e-money)
-            val isoDep = IsoDep.get(tag)
-            if (isoDep != null) {
-                val result = readIsoDepCard(isoDep)
-                if (result is CardReadResult.Success && result.transactions.isNotEmpty()) {
-                    return result
-                }
-            }
-            
-            // Try Mifare Classic (older e-money cards)
-            val mifare = MifareClassic.get(tag)
-            if (mifare != null) {
-                val result = readMifareClassicCard(mifare)
-                if (result is CardReadResult.Success && result.transactions.isNotEmpty()) {
-                    return result
-                }
-            }
-            
-            // If we got here, try to return whatever we got, or error
-            if (isoDep != null) {
-                readIsoDepCard(isoDep) // Return IsoDep result even if empty
-            } else if (mifare != null) {
-                readMifareClassicCard(mifare)
-            } else {
-                CardReadResult.Error("Kartu tidak didukung. Pastikan kartu e-money/Flazz asli.")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error reading card", e)
-            CardReadResult.Error("Gagal membaca kartu: ${e.message}")
-        }
-    }
-    
-    private fun readIsoDepCard(isoDep: IsoDep): CardReadResult {
-        isoDep.connect()
-        isoDep.timeout = 5000
-        
-        return try {
-            // Step 1: Select PPSE
-            val ppseResponse = isoDep.transceive(SELECT_PPSE)
-            Log.d(TAG, "PPSE Response: ${ppseResponse.toHex()}")
-            
-            var cardType = CardType.UNKNOWN
-            var cardName = "Kartu e-money"
-            var transactions = emptyList<Transaction>()
-            
-            if (ppseResponse.isSuccess()) {
-                // Step 2: Extract AID and select application
-                val aid = extractAid(ppseResponse)
-                if (aid != null) {
-                    val selectAid = buildSelectAid(aid)
-                    val aidResponse = isoDep.transceive(selectAid)
-                    Log.d(TAG, "AID Response: ${aidResponse.toHex()}")
-                    
-                    if (aidResponse.isSuccess()) {
-                        // Detect card type from AID
-                        when {
-                            aid.contentEquals(MASTERCARD_AID) -> {
-                                cardType = CardType.MANDIRI_EMONEY
-                                cardName = "Mandiri e-money"
-                            }
-                            aid.contentEquals(VISA_AID) -> {
-                                cardType = CardType.BCA_FLAZZ
-                                cardName = "BCA Flazz"
-                            }
-                        }
-                        
-                        // Step 3: Get Processing Options
-                        val gpo = buildGpoCommand(aidResponse)
-                        val gpoResponse = isoDep.transceive(gpo)
-                        Log.d(TAG, "GPO Response: ${gpoResponse.toHex()}")
-                        
-                        // Step 4: Read transaction log
-                        transactions = readEmvTransactionLog(isoDep)
-                        
-                        val cardInfo = extractCardInfo(aidResponse, isoDep, cardType, cardName)
-                        return CardReadResult.Success(cardInfo, transactions)
-                    }
-                }
-            }
-            
-            // Try direct AID selection for known cards
-            tryDirectAidSelection(isoDep)
-        } catch (e: IOException) {
-            CardReadResult.Error("Error komunikasi: ${e.message}")
-        } finally {
-            try { isoDep.close() } catch (e: Exception) { }
-        }
-    }
-    
-    private fun tryDirectAidSelection(isoDep: IsoDep): CardReadResult {
-        val knownAids = listOf(
-            Pair(MASTERCARD_AID, Pair(CardType.MANDIRI_EMONEY, "Mandiri e-money")),
-            Pair(VISA_AID, Pair(CardType.BCA_FLAZZ, "BCA Flazz")),
-            Pair(EMV_AID, Pair(CardType.UNKNOWN, "Kartu EMV"))
-        )
-        
-        for ((aid, cardInfoPair) in knownAids) {
-            try {
-                val selectAid = buildSelectAid(aid)
-                val response = isoDep.transceive(selectAid)
-                if (response.isSuccess()) {
-                    val transactions = readEmvTransactionLog(isoDep)
-                    val (cardType, cardName) = cardInfoPair
-                    val info = extractCardInfo(response, isoDep, cardType, cardName)
-                    return CardReadResult.Success(info, transactions)
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "AID selection failed for ${cardInfoPair.second}", e)
-            }
-        }
-        
-        return CardReadResult.Error("Tidak dapat membaca aplikasi kartu. Kartu mungkin tidak mendukung pembacaan log transaksi.")
-    }
-    
-    private fun readEmvTransactionLog(isoDep: IsoDep): List<Transaction> {
-        val transactions = mutableListOf<Transaction>()
-        
-        try {
-            // EMV Book 3, Annex D - Transaction Log
-            // Try to get Log Format first (Tag 9F4F)
-            val getLogFormat = byteArrayOf(0x80.toByte(), 0xCA.toByte(), 0x9F.toByte(), 0x4F, 0x00)
-            val logFormatResponse = isoDep.transceive(getLogFormat)
-            Log.d(TAG, "Log Format Response: ${logFormatResponse.toHex()}")
-            
-            // Common SFI for transaction log = 0x0C (12)
-            val possibleSfis = listOf(0x0C, 0x08, 0x10, 0x18)
-            
-            for (logSfi in possibleSfis) {
-                if (transactions.isNotEmpty()) break
-                
-                for (record in 1..20) {
-                    val readRecord = buildReadRecord(record, logSfi)
-                    val recordResponse = isoDep.transceive(readRecord)
-                    
-                    if (recordResponse.isSuccess() && recordResponse.size > 2) {
-                        val transaction = parseEmvTransactionRecord(recordResponse, record)
-                        if (transaction != null) {
-                            transactions.add(transaction)
-                        }
-                    } else {
-                        break // No more records in this SFI
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error reading EMV transaction log", e)
-        }
-        
-        return transactions
-    }
-    
-    private fun parseEmvTransactionRecord(data: ByteArray, recordNum: Int): Transaction? {
-        return try {
-            val tlvData = data.copyOfRange(0, data.size - 2) // Remove SW1 SW2
-            
-            // Parse standard EMV transaction log fields
-            val date = parseEmvDate(tlvData)
-            val time = parseEmvTime(tlvData)
-            val amount = parseEmvAmount(tlvData)
-            val merchant = parseEmvMerchant(tlvData) ?: "Transaksi #$recordNum"
-            
-            if (amount != null && amount > 0) {
-                Transaction(
-                    id = "EMV-$recordNum",
-                    date = date ?: "Unknown",
-                    time = time ?: "Unknown",
-                    location = merchant,
-                    amount = amount,
-                    type = detectTransactionType(merchant)
-                )
-            } else {
-                null
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error parsing EMV record", e)
-            null
-        }
-    }
-    
-    private fun readMifareClassicCard(mifare: MifareClassic): CardReadResult {
-        mifare.connect()
-        
-        return try {
-            val cardType = detectMifareCardType(mifare)
-            val transactions = mutableListOf<Transaction>()
-            var balance: Long = 0
-            var cardId = ""
-            
-            // Try to read card ID from sector 0
-            try {
-                if (authenticateSector(mifare, 0, COMMON_KEYS)) {
-                    val blockIndex = mifare.sectorToBlock(0)
-                    val uidData = mifare.readBlock(blockIndex)
-                    cardId = uidData.copyOfRange(0, 4).toHex()
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to read card ID", e)
-            }
-            
-            // Try to read balance and transactions from known sectors
-            // Indonesian e-money cards typically store data in sectors 1-8
-            for (sector in 1..8) {
-                try {
-                    val keys = when (cardType) {
-                        CardType.MANDIRI_EMONEY -> MANDIRI_KEYS
-                        CardType.BCA_FLAZZ -> FLAZZ_KEYS
-                        else -> COMMON_KEYS
-                    }
-                    
-                    if (authenticateSector(mifare, sector, keys)) {
-                        val blockIndex = mifare.sectorToBlock(sector)
-                        val blockCount = mifare.getBlockCountInSector(sector)
-                        
-                        for (blockOffset in 0 until blockCount - 1) { // Skip trailer block
-                            val data = mifare.readBlock(blockIndex + blockOffset)
-                            
-                            // Try to parse as transaction
-                            val transaction = parseMifareTransaction(data, sector, blockOffset)
-                            if (transaction != null) {
-                                transactions.add(transaction)
-                            }
-                            
-                            // Try to parse as balance (often in specific blocks)
-                            if (sector == 2 && blockOffset == 0) {
-                                val parsedBalance = parseMifareBalance(data)
-                                if (parsedBalance > 0) balance = parsedBalance
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to read sector $sector", e)
-                }
-            }
-            
-            CardReadResult.Success(
-                CardInfo(
-                    cardType = cardType,
-                    cardNumber = if (cardId.isNotEmpty()) "****$cardId" else "****",
-                    balance = balance,
-                    cardName = when (cardType) {
-                        CardType.MANDIRI_EMONEY -> "Mandiri e-money"
-                        CardType.BCA_FLAZZ -> "BCA Flazz"
-                        else -> "Kartu Mifare"
-                    }
-                ),
-                transactions.sortedByDescending { it.date + it.time }
+        Log.i(TAG, "========================================")
+        Log.i(TAG, "CARD DETECTED")
+        Log.i(TAG, "========================================")
+        Log.i(TAG, "UID: ${tag.id.toHex()}")
+        Log.i(TAG, "Tech List: ${tag.techList.joinToString()}")
+
+        val mifare = MifareClassic.get(tag)
+        if (mifare == null) {
+            Log.e(TAG, "This is NOT a Mifare Classic card!")
+            return CardReadResult.Error(
+                "Kartu ini bukan Mifare Classic.\n" +
+                "Tech yang terdeteksi: ${tag.techList.joinToString()}\n" +
+                "Aplikasi ini hanya support kartu e-money/Flazz model lama (Mifare Classic)."
             )
+        }
+
+        return try {
+            readMifareClassic(mifare, tag.id.toHex())
         } catch (e: Exception) {
-            CardReadResult.Error("Error membaca kartu Mifare: ${e.message}")
+            Log.e(TAG, "Fatal error reading card", e)
+            CardReadResult.Error("Error: ${e.message}")
+        }
+    }
+
+    private fun readMifareClassic(mifare: MifareClassic, uid: String): CardReadResult {
+        Log.i(TAG, "Connecting to Mifare Classic...")
+        mifare.connect()
+        Log.i(TAG, "Connected!")
+        Log.i(TAG, "Card Type: ${if (mifare.type == MifareClassic.TYPE_CLASSIC) "Classic" else "Classic 4K"}")
+        Log.i(TAG, "Sector Count: ${mifare.sectorCount}")
+        Log.i(TAG, "Block Count: ${mifare.blockCount}")
+        Log.i(TAG, "Size: ${mifare.size} bytes")
+
+        val allSectorData = mutableMapOf<Int, List<ByteArray>>()
+        var foundKeys = 0
+        var failedSectors = 0
+
+        try {
+            // Attempt to authenticate and read EVERY sector
+            for (sector in 0 until mifare.sectorCount) {
+                val blockIndex = mifare.sectorToBlock(sector)
+                val blockCount = mifare.getBlockCountInSector(sector)
+                var authenticated = false
+                var workingKey: ByteArray? = null
+
+                // Try every key in the dictionary for Key A
+                for (key in KEY_DICTIONARY) {
+                    try {
+                        if (mifare.authenticateSectorWithKeyA(sector, key)) {
+                            authenticated = true
+                            workingKey = key
+                            foundKeys++
+                            Log.i(TAG, "Sector $sector AUTHENTICATED with Key A: ${key.toHex()}")
+                            break
+                        }
+                    } catch (e: Exception) { /* ignore */ }
+                }
+
+                // If Key A fails, try Key B
+                if (!authenticated) {
+                    for (key in KEY_DICTIONARY) {
+                        try {
+                            if (mifare.authenticateSectorWithKeyB(sector, key)) {
+                                authenticated = true
+                                workingKey = key
+                                foundKeys++
+                                Log.i(TAG, "Sector $sector AUTHENTICATED with Key B: ${key.toHex()}")
+                                break
+                            }
+                        } catch (e: Exception) { /* ignore */ }
+                    }
+                }
+
+                if (!authenticated) {
+                    failedSectors++
+                    Log.w(TAG, "Sector $sector: AUTHENTICATION FAILED (tried ${KEY_DICTIONARY.size} keys)")
+                    continue
+                }
+
+                // Read all data blocks in this sector
+                val sectorBlocks = mutableListOf<ByteArray>()
+                for (blockOffset in 0 until blockCount) {
+                    try {
+                        val blockData = mifare.readBlock(blockIndex + blockOffset)
+                        sectorBlocks.add(blockData)
+                        Log.d(TAG, "Sector $sector Block $blockOffset: ${blockData.toHex()}")
+                    } catch (e: IOException) {
+                        Log.w(TAG, "Sector $sector Block $blockOffset: Read failed", e)
+                    }
+                }
+                allSectorData[sector] = sectorBlocks
+            }
+
+            Log.i(TAG, "========================================")
+            Log.i(TAG, "READ SUMMARY")
+            Log.i(TAG, "========================================")
+            Log.i(TAG, "Authenticated Sectors: $foundKeys/${mifare.sectorCount}")
+            Log.i(TAG, "Failed Sectors: $failedSectors/${mifare.sectorCount}")
+
+            if (allSectorData.isEmpty()) {
+                return CardReadResult.Error(
+                    "Tidak bisa membaca kartu.\n\n" +
+                    "Semua sector gagal diautentikasi.\n" +
+                    "Kartu ini menggunakan keys yang tidak dikenal.\n\n" +
+                    "Coba install aplikasi 'Mifare Classic Tool' dari Play Store " +
+                    "untuk dump kartu dan analisa keys-nya."
+                )
+            }
+
+            // Try to parse transactions from the raw data
+            val transactions = parseTransactionsFromSectors(allSectorData)
+
+            return CardReadResult.Success(
+                CardInfo(
+                    cardType = CardType.UNKNOWN,
+                    cardNumber = uid,
+                    balance = 0,
+                    cardName = "Kartu e-money (Mifare Classic)"
+                ),
+                transactions
+            )
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error during read", e)
+            return CardReadResult.Error("Error saat membaca: ${e.message}")
         } finally {
             try { mifare.close() } catch (e: Exception) { }
         }
     }
-    
-    private fun authenticateSector(mifare: MifareClassic, sector: Int, keys: List<ByteArray>): Boolean {
-        for (key in keys) {
-            try {
-                if (mifare.authenticateSectorWithKeyA(sector, key)) {
-                    return true
+
+    /**
+     * Parse transaction data from the raw sector data.
+     * This is HEURISTIC since each card type has its own format.
+     */
+    private fun parseTransactionsFromSectors(
+        sectorData: Map<Int, List<ByteArray>>
+    ): List<Transaction> {
+        val transactions = mutableListOf<Transaction>()
+        var txnIndex = 1
+
+        for ((sector, blocks) in sectorData) {
+            // Skip sector 0 (manufacturer data)
+            if (sector == 0) continue
+
+            for ((blockOffset, block) in blocks.withIndex()) {
+                // Skip sector trailers (last block of each sector)
+                if (blockOffset == blocks.size - 1) continue
+
+                // Skip empty blocks
+                if (block.all { it == 0x00.toByte() } || block.all { it == 0xFF.toByte() }) {
+                    continue
                 }
-                if (mifare.authenticateSectorWithKeyB(sector, key)) {
-                    return true
+
+                Log.d(TAG, "Analyzing Sector $sector Block $blockOffset: ${block.toHex()}")
+
+                // Heuristic 1: Look for amount in first 2-4 bytes
+                // Indonesian parking is usually 2000, 3000, 4000, 5000, 10000, 15000, etc.
+                val amount = extractAmount(block)
+
+                if (amount != null && amount >= 1000 && amount <= 1000000) {
+                    // Try to find a date/time near the amount
+                    val (date, time) = extractDateTime(block)
+
+                    transactions.add(
+                        Transaction(
+                            id = "TXN-${txnIndex++}",
+                            date = date,
+                            time = time,
+                            location = "Transaksi (${sector}:${blockOffset})",
+                            amount = amount,
+                            type = TransactionType.PARKING
+                        )
+                    )
+                    Log.i(TAG, "Found transaction: Rp $amount at $date $time")
                 }
-            } catch (e: Exception) {
-                // Try next key
             }
         }
-        return false
+
+        return transactions.sortedByDescending { it.date + it.time }
     }
-    
-    private fun detectMifareCardType(mifare: MifareClassic): CardType {
-        // Try to detect card type by attempting authentication with specific keys
+
+    private fun extractAmount(block: ByteArray): Long? {
+        // Try multiple interpretations of the amount field
         return try {
-            for (sector in 1..4) {
-                if (authenticateSector(mifare, sector, MANDIRI_KEYS)) {
-                    return CardType.MANDIRI_EMONEY
-                }
-                if (authenticateSector(mifare, sector, FLAZZ_KEYS)) {
-                    return CardType.BCA_FLAZZ
-                }
-            }
-            CardType.UNKNOWN
-        } catch (e: Exception) {
-            CardType.UNKNOWN
-        }
-    }
-    
-    private fun parseMifareTransaction(data: ByteArray, sector: Int, block: Int): Transaction? {
-        return try {
-            // Skip empty or factory blocks
-            if (data.all { it == 0x00.toByte() } || data.all { it == 0xFF.toByte() }) {
-                return null
-            }
-            
-            // Heuristic: Indonesian e-money transactions often have:
-            // - Amount in specific bytes (usually 2-4 bytes)
-            // - Date/time encoded in remaining bytes
-            
-            // Try multiple parsing strategies
-            
-            // Strategy 1: Direct amount in first 4 bytes (big endian)
-            val amount1 = ByteBuffer.wrap(data.copyOfRange(0, 4)).int.toLong()
-            if (amount1 in 1000..10000000) {
-                return createTransaction(data, amount1, sector, block)
-            }
-            
-            // Strategy 2: Amount in bytes 4-8
-            val amount2 = ByteBuffer.wrap(data.copyOfRange(4, 8)).int.toLong()
-            if (amount2 in 1000..10000000) {
-                return createTransaction(data, amount2, sector, block)
-            }
-            
-            // Strategy 3: Little endian amount
-            val amount3 = ByteBuffer.wrap(data.copyOfRange(0, 4))
-                .order(ByteOrder.LITTLE_ENDIAN).int.toLong()
-            if (amount3 in 1000..10000000) {
-                return createTransaction(data, amount3, sector, block)
-            }
-            
+            // Interpretation 1: 2-byte big-endian (most common for small amounts)
+            val amt1 = ((block[0].toInt() and 0xFF) shl 8 or (block[1].toInt() and 0xFF)).toLong()
+            if (amt1 in 1000..1000000) return amt1
+
+            // Interpretation 2: 2-byte little-endian
+            val amt2 = ((block[1].toInt() and 0xFF) shl 8 or (block[0].toInt() and 0xFF)).toLong()
+            if (amt2 in 1000..1000000) return amt2
+
+            // Interpretation 3: 3-byte big-endian
+            val amt3 = ((block[0].toInt() and 0xFF) shl 16 or
+                    (block[1].toInt() and 0xFF) shl 8 or
+                    (block[2].toInt() and 0xFF)).toLong()
+            if (amt3 in 1000..1000000) return amt3
+
+            // Interpretation 4: 4-byte big-endian (less common for parking)
+            val amt4 = ByteBuffer.wrap(block.copyOfRange(0, 4)).int.toLong()
+            if (amt4 in 1000..1000000) return amt4
+
+            // Interpretation 5: 4-byte little-endian
+            val amt5 = ByteBuffer.wrap(block.copyOfRange(0, 4)).order(ByteOrder.LITTLE_ENDIAN).int.toLong()
+            if (amt5 in 1000..1000000) return amt5
+
             null
         } catch (e: Exception) {
             null
         }
     }
-    
-    private fun createTransaction(data: ByteArray, amount: Long, sector: Int, block: Int): Transaction {
-        // Try to extract date from remaining bytes
-        val dateStr = try {
-            val day = data.getOrNull(8)?.toInt()?.and(0xFF) ?: 0
-            val month = data.getOrNull(9)?.toInt()?.and(0xFF) ?: 0
-            val year = data.getOrNull(10)?.toInt()?.and(0xFF) ?: 0
-            if (day in 1..31 && month in 1..12 && year in 0..99) {
-                String.format("20%02d-%02d-%02d", year, month, day)
-            } else {
-                SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-            }
-        } catch (e: Exception) {
-            SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-        }
-        
-        val timeStr = try {
-            val hour = data.getOrNull(11)?.toInt()?.and(0xFF) ?: 0
-            val minute = data.getOrNull(12)?.toInt()?.and(0xFF) ?: 0
-            if (hour in 0..23 && minute in 0..59) {
-                String.format("%02d:%02d", hour, minute)
-            } else {
-                SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-            }
-        } catch (e: Exception) {
-            SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
-        }
-        
-        return Transaction(
-            id = "MIF-${sector}-${block}",
-            date = dateStr,
-            time = timeStr,
-            location = "Parkir (${sector}:${block})",
-            amount = amount,
-            type = TransactionType.PARKING
-        )
-    }
-    
-    private fun parseMifareBalance(data: ByteArray): Long {
+
+    private fun extractDateTime(block: ByteArray): Pair<String, String> {
+        val defaultDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        val defaultTime = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+
         return try {
-            val balance = ByteBuffer.wrap(data.copyOfRange(0, 4)).int.toLong()
-            if (balance in 0..100000000) balance else 0
-        } catch (e: Exception) {
-            0
-        }
-    }
-    
-    private fun extractCardInfo(response: ByteArray, isoDep: IsoDep, cardType: CardType, cardName: String): CardInfo {
-        var cardNumber = "****"
-        var balance = 0L
-        
-        try {
-            // Try to read PAN (Tag 5A)
-            val pan = findTlvValue(response, 0x5A)
-            if (pan != null) {
-                cardNumber = pan.toHex().let { 
-                    if (it.length >= 8) "****${it.takeLast(4)}" else "****"
-                }
-            }
-            
-            // Try to read balance if available
-            // Some cards support GET DATA for balance
-            val getBalance = byteArrayOf(0x80.toByte(), 0xCA.toByte(), 0x9F.toByte(), 0x79, 0x00)
-            val balanceResponse = isoDep.transceive(getBalance)
-            if (balanceResponse.isSuccess()) {
-                val balanceData = balanceResponse.copyOfRange(0, balanceResponse.size - 2)
-                if (balanceData.size >= 4) {
-                    balance = ByteBuffer.wrap(balanceData).int.toLong()
-                }
+            // Look for date/time in bytes 2-7
+            if (block.size >= 8) {
+                val year = block[2].toInt() and 0xFF
+                val month = block[3].toInt() and 0xFF
+                val day = block[4].toInt() and 0xFF
+                val hour = block[5].toInt() and 0xFF
+                val minute = block[6].toInt() and 0xFF
+
+                val validDate = year in 20..30 && month in 1..12 && day in 1..31
+                val validTime = hour in 0..23 && minute in 0..59
+
+                val dateStr = if (validDate) String.format("20%02d-%02d-%02d", year, month, day) else defaultDate
+                val timeStr = if (validTime) String.format("%02d:%02d", hour, minute) else defaultTime
+
+                Pair(dateStr, timeStr)
+            } else {
+                Pair(defaultDate, defaultTime)
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to extract card info", e)
-        }
-        
-        return CardInfo(cardType, cardNumber, balance, cardName)
-    }
-    
-    private fun extractAid(response: ByteArray): ByteArray? {
-        return findTlvValue(response, 0x4F)
-    }
-    
-    private fun parseEmvDate(data: ByteArray): String? {
-        val dateBytes = findTlvValue(data, 0x9A) ?: return null
-        return if (dateBytes.size >= 3) {
-            String.format("20%02d-%02d-%02d", dateBytes[0], dateBytes[1], dateBytes[2])
-        } else null
-    }
-    
-    private fun parseEmvTime(data: ByteArray): String? {
-        val timeBytes = findTlvValue(data, 0x9F21) ?: return null
-        return if (timeBytes.size >= 3) {
-            String.format("%02d:%02d:%02d", timeBytes[0], timeBytes[1], timeBytes[2])
-        } else null
-    }
-    
-    private fun parseEmvAmount(data: ByteArray): Long? {
-        val amountBytes = findTlvValue(data, 0x9F02) ?: return null
-        return if (amountBytes.size >= 6) {
-            var amount = 0L
-            for (i in 0 until 6) {
-                amount = (amount * 256) + (amountBytes[i].toInt() and 0xFF)
-            }
-            amount
-        } else null
-    }
-    
-    private fun parseEmvMerchant(data: ByteArray): String? {
-        return findTlvValue(data, 0x9F4E)?.let { 
-            String(it).trim().replace(Regex("[^ -~]"), "")
+            Pair(defaultDate, defaultTime)
         }
     }
-    
-    private fun detectTransactionType(merchant: String): TransactionType {
-        val lower = merchant.lowercase()
-        return when {
-            lower.contains("parkir") || lower.contains("parking") -> TransactionType.PARKING
-            lower.contains("tol") || lower.contains("toll") || lower.contains("jalan") -> TransactionType.TOLL
-            lower.contains("topup") || lower.contains("isi") || lower.contains("top up") -> TransactionType.TOPUP
-            else -> TransactionType.UNKNOWN
-        }
-    }
-    
-    private fun findTlvValue(data: ByteArray, tag: Int): ByteArray? {
-        var i = 0
-        while (i < data.size - 1) {
-            val currentTag = data[i].toInt() and 0xFF
-            if (currentTag == tag) {
-                val length = data.getOrNull(i + 1)?.toInt() ?: return null
-                if (i + 2 + length <= data.size) {
-                    return data.copyOfRange(i + 2, i + 2 + length)
-                }
-            }
-            i++
-        }
-        return null
-    }
-    
-    private fun buildSelectAid(aid: ByteArray): ByteArray {
-        return byteArrayOf(0x00, 0xA4.toByte(), 0x04, 0x00, aid.size.toByte()) + aid + 0x00
-    }
-    
-    private fun buildGpoCommand(fciResponse: ByteArray): ByteArray {
-        // Parse PDOL from FCI and build GPO
-        // For simplicity, use empty PDOL response
-        return byteArrayOf(0x80.toByte(), 0xA8.toByte(), 0x00.toByte(), 0x00.toByte(), 0x02.toByte(), 0x83.toByte(), 0x00.toByte(), 0x00.toByte())
-    }
-    
-    private fun buildReadRecord(record: Int, sfi: Int): ByteArray {
-        return byteArrayOf(
-            0x00.toByte(), 0xB2.toByte(),
-            record.toByte(),
-            ((sfi shl 3) or 0x04).toByte(),
-            0x00.toByte()
-        )
-    }
-    
-    private fun ByteArray.isSuccess(): Boolean {
-        return size >= 2 && this[size - 2] == 0x90.toByte() && this[size - 1] == 0x00.toByte()
-    }
-    
+
     private fun ByteArray.toHex(): String {
         return joinToString("") { "%02X".format(it) }
     }
