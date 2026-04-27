@@ -1,0 +1,19 @@
+<resources>
+    <string name="app_name">Emoney Reimburse</string>
+    <string name="scan_card">Tempelkan Kartu</string>
+    <string name="scan_description">Tempelkan kartu e-money atau Flazz Anda di bagian belakang ponsel untuk memindai transaksi</string>
+    <string name="select_transactions">Pilih Transaksi</string>
+    <string name="select_description">Pilih transaksi parkir yang valid untuk direimburse</string>
+    <string name="fill_name">Isi Nama</string>
+    <string name="name_hint">Masukkan nama lengkap Anda</string>
+    <string name="generate_pdf">Generate PDF</string>
+    <string name="share_pdf">Bagikan PDF</string>
+    <string name="total">Total: Rp %s</string>
+    <string name="transaction_count">%d transaksi dipilih</string>
+    <string name="nfc_not_available">NFC tidak tersedia di perangkat ini</string>
+    <string name="enable_nfc">Aktifkan NFC</string>
+    <string name="reading_card">Membaca kartu...</string>
+    <string name="no_transactions">Tidak ada transaksi ditemukan</string>
+    <string name="pdf_generated">PDF berhasil dibuat</string>
+    <string name="pdf_error">Gagal membuat PDF</string>
+</resources>
