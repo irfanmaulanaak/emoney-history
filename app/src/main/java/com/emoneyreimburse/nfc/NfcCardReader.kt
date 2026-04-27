@@ -46,9 +46,8 @@ class NfcCardReader {
         // Common Mifare Classic keys used by Indonesian e-money cards
         private val COMMON_KEYS = listOf(
             MifareClassic.KEY_DEFAULT,           // FF FF FF FF FF FF
-            MifareClassic.KEY_MIFARE_APPLICATION_CONTAINER, // A0 A1 A2 A3 A4 A5
-            MifareClassic.KEY_NFC_FORUM,         // D3 F7 D3 F7 D3 F7
             byteArrayOf(0xA0.toByte(), 0xA1.toByte(), 0xA2.toByte(), 0xA3.toByte(), 0xA4.toByte(), 0xA5.toByte()),
+            byteArrayOf(0xD3.toByte(), 0xF7.toByte(), 0xD3.toByte(), 0xF7.toByte(), 0xD3.toByte(), 0xF7.toByte()),
             byteArrayOf(0xB0.toByte(), 0xB1.toByte(), 0xB2.toByte(), 0xB3.toByte(), 0xB4.toByte(), 0xB5.toByte()),
             byteArrayOf(0x4D.toByte(), 0x61.toByte(), 0x64.toByte(), 0x61.toByte(), 0x6D.toByte(), 0x69.toByte()), // "Madami"
             byteArrayOf(0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte()),
@@ -262,7 +261,7 @@ class NfcCardReader {
                 if (authenticateSector(mifare, 0, COMMON_KEYS)) {
                     val blockIndex = mifare.sectorToBlock(0)
                     val uidData = mifare.readBlock(blockIndex)
-                    cardId = uidData.take(4).toHex()
+                    cardId = uidData.copyOfRange(0, 4).toHex()
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to read card ID", e)
@@ -501,7 +500,7 @@ class NfcCardReader {
     
     private fun parseEmvMerchant(data: ByteArray): String? {
         return findTlvValue(data, 0x9F4E)?.let { 
-            String(it).trim().replace(Regex("[^\x20-\x7E]"), "")
+            String(it).trim().replace(Regex("[^ -~]"), "")
         }
     }
     
@@ -537,15 +536,15 @@ class NfcCardReader {
     private fun buildGpoCommand(fciResponse: ByteArray): ByteArray {
         // Parse PDOL from FCI and build GPO
         // For simplicity, use empty PDOL response
-        return byteArrayOf(0x80.toByte(), 0xA8.toByte(), 0x00, 0x00, 0x02, 0x83, 0x00, 0x00)
+        return byteArrayOf(0x80.toByte(), 0xA8.toByte(), 0x00.toByte(), 0x00.toByte(), 0x02.toByte(), 0x83.toByte(), 0x00.toByte(), 0x00.toByte())
     }
     
     private fun buildReadRecord(record: Int, sfi: Int): ByteArray {
         return byteArrayOf(
-            0x00, 0xB2.toByte(),
+            0x00.toByte(), 0xB2.toByte(),
             record.toByte(),
             ((sfi shl 3) or 0x04).toByte(),
-            0x00
+            0x00.toByte()
         )
     }
     

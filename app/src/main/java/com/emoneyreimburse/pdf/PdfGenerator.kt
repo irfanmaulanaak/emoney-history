@@ -194,7 +194,7 @@ class PdfGenerator(private val context: Context) {
         cell.backgroundColor = backgroundColor
         cell.horizontalAlignment = Element.ALIGN_CENTER
         cell.verticalAlignment = Element.ALIGN_MIDDLE
-        cell.padding = 8f
+        cell.setPadding(8f)
         return cell
     }
     
@@ -202,7 +202,7 @@ class PdfGenerator(private val context: Context) {
         val cell = PdfPCell(Paragraph(text, font))
         cell.horizontalAlignment = alignment
         cell.verticalAlignment = Element.ALIGN_MIDDLE
-        cell.padding = 6f
+        cell.setPadding(6f)
         return cell
     }
     
