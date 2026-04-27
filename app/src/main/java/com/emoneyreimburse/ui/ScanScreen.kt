@@ -23,6 +23,7 @@ fun ScanScreen(
     isLoading: Boolean,
     errorMessage: String?,
     onNfcPrompt: () -> Unit,
+    onOcrClick: () -> Unit,
     onDemoClick: () -> Unit,
     onManualClick: () -> Unit,
     onClearError: () -> Unit
@@ -129,6 +130,24 @@ fun ScanScreen(
             }
             
             Spacer(modifier = Modifier.height(16.dp))
+            
+            Button(
+                onClick = onOcrClick,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondary
+                )
+            ) {
+                Text(
+                    text = "Scan Screenshot (OCR)",
+                    fontSize = 16.sp
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
             
             OutlinedButton(
                 onClick = onManualClick,

@@ -66,6 +66,12 @@ dependencies {
     // iText for PDF generation
     implementation("com.itextpdf:itextg:5.5.10")
     
+    // ML Kit for OCR
+    implementation("com.google.mlkit:text-recognition:16.0.0")
+    
+    // Coroutines support for ML Kit
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
+    
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")

@@ -86,6 +86,17 @@ class MainViewModel : ViewModel() {
         }
     }
     
+    fun onOcrInput() {
+        android.util.Log.d("MainViewModel", "onOcrInput() called - changing screen to OCR")
+        _uiState.update { currentState ->
+            currentState.copy(
+                currentScreen = Screen.OCR,
+                transactions = emptyList(),
+                errorMessage = null
+            )
+        }
+    }
+    
     fun onManualInput() {
         android.util.Log.d("MainViewModel", "onManualInput() called - changing screen to MANUAL")
         _uiState.update { currentState ->
@@ -254,5 +265,5 @@ data class UiState(
 )
 
 enum class Screen {
-    SCAN, MANUAL, SELECT, INPUT, PREVIEW
+    SCAN, OCR, MANUAL, SELECT, INPUT, PREVIEW
 }

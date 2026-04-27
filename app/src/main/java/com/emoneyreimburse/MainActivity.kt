@@ -70,20 +70,29 @@ class MainActivity : ComponentActivity() {
                                     Log.d(TAG, "onNfcPrompt clicked")
                                     checkNfcAndPrompt() 
                                 },
+                                onOcrClick = {
+                                    Log.d(TAG, "onOcrClick clicked")
+                                    viewModel.onOcrInput()
+                                },
                                 onDemoClick = { 
                                     Log.d(TAG, "onDemoClick clicked")
                                     viewModel.loadDemoData() 
                                 },
                                 onManualClick = { 
-                                    Log.d(TAG, "onManualClick clicked - navigating to MANUAL screen")
-                                    Toast.makeText(this@MainActivity, "Tombol diklik!", Toast.LENGTH_SHORT).show()
+                                    Log.d(TAG, "onManualClick clicked")
                                     viewModel.onManualInput() 
                                 },
                                 onClearError = { viewModel.clearError() }
                             )
                         }
+                        Screen.OCR -> {
+                            OcrScreen(
+                                viewModel = viewModel,
+                                onNext = { viewModel.onManualNextToSelect() },
+                                onBack = { viewModel.onBackToScan() }
+                            )
+                        }
                         Screen.MANUAL -> {
-                            Log.d(TAG, "Rendering MANUAL screen")
                             ManualInputScreen(
                                 manualTransactions = uiState.transactions,
                                 onAddTransaction = { viewModel.addManualTransaction(it) },
