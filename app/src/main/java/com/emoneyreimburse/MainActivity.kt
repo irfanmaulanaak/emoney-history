@@ -22,7 +22,9 @@ import com.emoneyreimburse.nfc.CardReadResult
 import com.emoneyreimburse.nfc.NfcCardReader
 import com.emoneyreimburse.ui.*
 import com.emoneyreimburse.ui.theme.EmoneyReimburseTheme
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     
@@ -158,26 +160,30 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         Log.d(TAG, "readNfcCard called")
         viewModel.setLoading(true)
         
-        lifecycleScope.launch {
+        lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val result = nfcCardReader.readCard(tag)
-                when (result) {
-                    is CardReadResult.Success -> {
-                        Log.d(TAG, "Card read success: ${result.transactions.size} transactions")
-                        if (result.transactions.isEmpty()) {
-                            viewModel.onScanError("Kartu terbaca tapi tidak ada transaksi ditemukan. Coba kartu lain.")
-                        } else {
-                            viewModel.onCardScanned(result.cardInfo, result.transactions)
+                withContext(Dispatchers.Main) {
+                    when (result) {
+                        is CardReadResult.Success -> {
+                            Log.d(TAG, "Card read success: ${result.transactions.size} transactions")
+                            if (result.transactions.isEmpty()) {
+                                viewModel.onScanError("Kartu terbaca tapi tidak ada transaksi ditemukan. Coba kartu lain.")
+                            } else {
+                                viewModel.onCardScanned(result.cardInfo, result.transactions)
+                            }
                         }
-                    }
-                    is CardReadResult.Error -> {
-                        Log.e(TAG, "Card read error: ${result.message}")
-                        viewModel.onScanError(result.message)
+                        is CardReadResult.Error -> {
+                            Log.e(TAG, "Card read error: ${result.message}")
+                            viewModel.onScanError(result.message)
+                        }
                     }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Unexpected error", e)
-                viewModel.onScanError("Error tidak terduga: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    viewModel.onScanError("Error tidak terduga: ${e.message}")
+                }
             }
         }
     }

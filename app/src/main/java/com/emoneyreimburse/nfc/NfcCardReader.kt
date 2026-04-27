@@ -28,94 +28,35 @@ class NfcCardReader {
     companion object {
         private const val TAG = "NfcCardReader"
 
-        // Comprehensive key dictionary from Mifare Classic Tool + known Indonesian keys
+        // Key dictionary — starts with most common keys only.
+        // Testing too many keys causes the app to freeze for too long.
+        // If these fail, the card uses custom/undocumented keys.
         private val KEY_DICTIONARY = listOf(
-            // Default keys
+            // Factory default keys (80%+ of cards use these)
             hexToBytes("FFFFFFFFFFFF"),
             hexToBytes("000000000000"),
             hexToBytes("A0A1A2A3A4A5"),  // MAD key
             hexToBytes("D3F7D3F7D3F7"),  // NFC Forum
+
+            // Common transport keys
             hexToBytes("B0B1B2B3B4B5"),
-
-            // Common transport/retail keys
-            hexToBytes("A0B0C0D0E0F0"),
-            hexToBytes("A1B1C1D1E1F1"),
-            hexToBytes("B5FF67CBA951"),
-            hexToBytes("4D3A99C351DD"),
-            hexToBytes("1A982C7E459A"),
             hexToBytes("AABBCCDDEEFF"),
+            hexToBytes("123456789ABC"),
 
-            // Indonesian e-money related keys (guessed/common)
-            hexToBytes("4D616E646972"), // "Mandir" ASCII
-            hexToBytes("424341466C61"), // "BCAFla" ASCII
+            // Indonesian e-money ASCII keys (guessed from card names)
+            hexToBytes("4D616E646972"), // "Mandir"
+            hexToBytes("424341466C61"), // "BCAFla"
             hexToBytes("464C415A5A30"), // "FLAZZ0"
             hexToBytes("454D4F4E4559"), // "EMONEY"
             hexToBytes("4252495A5A49"), // "BRIZZI"
-            hexToBytes("544150434153"), // "TAPCAS" (Tapcash)
-            hexToBytes("4A414B4C494E"), // "JAKLIN" (Jaklingko)
-            hexToBytes("424E4954454C"), // "BNITEL" (BNI)
-            hexToBytes("4D4547414341"), // "MEGACA" (Megacash)
-            hexToBytes("4B4D54545249"), // "KMTRI" (KMT/KRL)
+            hexToBytes("544150434153"), // "TAPCAS"
+            hexToBytes("4A414B4C494E"), // "JAKLIN"
+            hexToBytes("424E4954454C"), // "BNITEL"
 
-            // Keys from various e-money/top-up machine vendors
-            hexToBytes("123456789ABC"),
+            // Vendor default patterns
             hexToBytes("111111111111"),
-            hexToBytes("222222222222"),
-            hexToBytes("333333333333"),
-            hexToBytes("444444444444"),
-            hexToBytes("555555555555"),
-            hexToBytes("666666666666"),
-            hexToBytes("777777777777"),
-            hexToBytes("888888888888"),
-            hexToBytes("999999999999"),
-            hexToBytes("AAAAAAAAAAAA"),
-            hexToBytes("BBBBBBBBBBBB"),
-            hexToBytes("CCCCCCCCCCCC"),
-            hexToBytes("DDDDDDDDDDDD"),
-            hexToBytes("EEEEEEEEEEEE"),
-
-            // Other known keys from public dumps
-            hexToBytes("A94133010401"),
-            hexToBytes("E3619E2C923F"),
-            hexToBytes("878051E9A8F9"),
-            hexToBytes("3A3B6C5B7A52"),
-            hexToBytes("1243559C6B07"),
-            hexToBytes("01FA3F361E3D"),
             hexToBytes("123456ABCDEF"),
-            hexToBytes("F1A9732A9C4D"),
-            hexToBytes("1860F387A502"),
-            hexToBytes("C0C1C2C3C4C5"),
-            hexToBytes("D0D1D2D3D4D5"),
-            hexToBytes("E0E1E2E3E4E5"),
-            hexToBytes("F0F1F2F3F4F5"),
             hexToBytes("A5B4C3D2E1F0"),
-            hexToBytes("0123456789AB"),
-            hexToBytes("FEDCBA987654"),
-            hexToBytes("ABCDEF123456"),
-            hexToBytes("654321ABCDEF"),
-            hexToBytes("5F5F5F5F5F5F"),
-            hexToBytes("100000000000"),
-            hexToBytes("200000000000"),
-            hexToBytes("300000000000"),
-            hexToBytes("400000000000"),
-            hexToBytes("500000000000"),
-
-            // Keys often used in access control / transport in Asia
-            hexToBytes("AB12CD34EF56"),
-            hexToBytes("12AB34CD56EF"),
-            hexToBytes("1234ABCD5678"),
-            hexToBytes("000102030405"),
-            hexToBytes("001122334455"),
-            hexToBytes("112233445566"),
-            hexToBytes("223344556677"),
-            hexToBytes("334455667788"),
-            hexToBytes("445566778899"),
-            hexToBytes("5566778899AA"),
-            hexToBytes("66778899AABB"),
-            hexToBytes("778899AABBCC"),
-            hexToBytes("8899AABBCCDD"),
-            hexToBytes("99AABBCCDDEE"),
-            hexToBytes("AABBCCDDEEFF"),
         )
 
         private fun hexToBytes(hex: String): ByteArray {
@@ -149,6 +90,8 @@ class NfcCardReader {
         } catch (e: Exception) {
             Log.e(TAG, "Fatal error reading card", e)
             CardReadResult.Error("Error: ${e.message}")
+        } finally {
+            try { mifare.close() } catch (e: Exception) { }
         }
     }
 
