@@ -87,6 +87,7 @@ class MainViewModel : ViewModel() {
     }
     
     fun onManualInput() {
+        android.util.Log.d("MainViewModel", "onManualInput() called - changing screen to MANUAL")
         _uiState.update { currentState ->
             currentState.copy(
                 currentScreen = Screen.MANUAL,

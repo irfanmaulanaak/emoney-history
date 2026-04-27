@@ -4,7 +4,6 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.nfc.NfcAdapter
 import android.nfc.Tag
-import android.nfc.tech.IsoDep
 import android.nfc.tech.MifareClassic
 import android.os.Bundle
 import android.provider.Settings
@@ -16,6 +15,8 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
 import com.emoneyreimburse.nfc.CardReadResult
@@ -26,9 +27,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
+class MainActivity : ComponentActivity() {
     
     private var nfcAdapter: NfcAdapter? = null
+    private var pendingIntent: PendingIntent? = null
     private val viewModel: MainViewModel by viewModels()
     private val nfcCardReader = NfcCardReader()
     
@@ -42,26 +44,46 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         nfcAdapter = NfcAdapter.getDefaultAdapter(this)
         Log.d(TAG, "NFC Adapter: $nfcAdapter")
         
+        // Create PendingIntent for NFC foreground dispatch
+        val intent = Intent(this, javaClass).apply {
+            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        pendingIntent = PendingIntent.getActivity(
+            this, 0, intent,
+            PendingIntent.FLAG_MUTABLE
+        )
+        
         setContent {
             EmoneyReimburseTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    val uiState = viewModel.uiState.value
+                    val uiState by viewModel.uiState.collectAsState()
                     
                     when (uiState.currentScreen) {
                         Screen.SCAN -> {
                             ScanScreen(
                                 isLoading = uiState.isLoading,
                                 errorMessage = uiState.errorMessage,
-                                onNfcPrompt = { checkNfcAndPrompt() },
-                                onDemoClick = { viewModel.loadDemoData() },
-                                onManualClick = { viewModel.onManualInput() },
+                                onNfcPrompt = { 
+                                    Log.d(TAG, "onNfcPrompt clicked")
+                                    checkNfcAndPrompt() 
+                                },
+                                onDemoClick = { 
+                                    Log.d(TAG, "onDemoClick clicked")
+                                    viewModel.loadDemoData() 
+                                },
+                                onManualClick = { 
+                                    Log.d(TAG, "onManualClick clicked - navigating to MANUAL screen")
+                                    Toast.makeText(this@MainActivity, "Tombol diklik!", Toast.LENGTH_SHORT).show()
+                                    viewModel.onManualInput() 
+                                },
                                 onClearError = { viewModel.clearError() }
                             )
                         }
                         Screen.MANUAL -> {
+                            Log.d(TAG, "Rendering MANUAL screen")
                             ManualInputScreen(
                                 manualTransactions = uiState.transactions,
                                 onAddTransaction = { viewModel.addManualTransaction(it) },
@@ -108,48 +130,27 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     
     override fun onResume() {
         super.onResume()
-        Log.d(TAG, "Enabling NFC reader mode")
-        try {
-            nfcAdapter?.enableReaderMode(
-                this,
-                this,
-                NfcAdapter.FLAG_READER_NFC_A or
-                NfcAdapter.FLAG_READER_NFC_B or
-                NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK,
-                null
+        Log.d(TAG, "onResume - enabling foreground dispatch")
+        // Use foreground dispatch instead of reader mode for better UI compatibility
+        nfcAdapter?.enableForegroundDispatch(
+            this, pendingIntent, null,
+            arrayOf(
+                arrayOf(MifareClassic::class.java.name),
+                arrayOf(android.nfc.tech.NfcA::class.java.name)
             )
-            Log.d(TAG, "NFC reader mode enabled")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to enable reader mode", e)
-        }
+        )
     }
     
     override fun onPause() {
         super.onPause()
-        try {
-            nfcAdapter?.disableReaderMode(this)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to disable reader mode", e)
-        }
+        Log.d(TAG, "onPause - disabling foreground dispatch")
+        nfcAdapter?.disableForegroundDispatch(this)
     }
     
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         Log.d(TAG, "onNewIntent: ${intent?.action}")
         handleNfcIntent(intent)
-    }
-    
-    override fun onTagDiscovered(tag: Tag?) {
-        Log.d(TAG, "onTagDiscovered called!")
-        tag?.let {
-            Log.d(TAG, "Tag discovered: ${it.id.toHex()}")
-            Log.d(TAG, "Tag techs: ${it.techList.joinToString()}")
-            
-            runOnUiThread {
-                Toast.makeText(this, "Kartu terdeteksi! Membaca...", Toast.LENGTH_SHORT).show()
-                readNfcCard(it)
-            }
-        }
     }
     
     private fun handleNfcIntent(intent: Intent?) {
@@ -161,6 +162,7 @@ class MainActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             val tag: Tag? = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG)
             tag?.let {
                 Log.d(TAG, "Tag from intent: ${it.id.toHex()}")
+                Toast.makeText(this, "Kartu terdeteksi! Membaca...", Toast.LENGTH_SHORT).show()
                 readNfcCard(it)
             }
         }
